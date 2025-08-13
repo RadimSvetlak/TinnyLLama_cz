@@ -7,7 +7,7 @@ Připravuju datovou sadu pro finetuning **TinyLlama 1B**, zaměřenou na gramati
 
 ---
 
-## 🔍 Co projekt obsahuje
+## 🔍 Co projekt zatím obsahuje
 
 - Databázi tvarů přídavných jmen, zájmen a číslovek (1–99) ve všech pádech a rodech  
 - Složené řadové číslovky typu „dvacátý první“ s plným skloňováním  
@@ -26,4 +26,4 @@ Chceš se přidat? Napiš mi nebo otevři issue.
 
 ## 🧠 Autor
 
-Radim — s pomocí AI asistenta pro generování dat a skriptů.
+Radim Světlák  — s pomocí AI asistenta (MS Copilot a chatGPT)
