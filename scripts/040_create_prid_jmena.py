@@ -1,44 +1,22 @@
 # ------------------------------------------------------------
 # Název: Generátor tréninkových úloh pro přídavná jména v češtině
 # Popis:
-#   Tento skript vytváří JSONL soubor s tréninkovými dvojicemi
-#   prompt–completion pro procvičování přídavných jmen a jejich
-#   shody s podstatnými jmény v různých rodech, číslech a pádech.
+#   Vytváří JSONL soubor s tréninkovými dvojicemi prompt–completion
+#   pro shodu adjektiv a substantiv (včetně 5. pádu), transformace
+#   mezi pády, kontext s předložkami, vokativ, výběrové úlohy a
+#   stupňování. Důraz na jasné instrukce a krátké odpovědi.
 #
-#   Obsahuje:
-#     - Funkci generate_adjective_tasks:
-#         Náhodně vybírá rod, podstatné jméno, přídavné jméno, číslo
-#         (sg/pl) a pád, a generuje úlohy ve formátu:
-#         prompt = instrukce k vytvoření shody adjektiv a substantiv
-#         completion = správná dvojice tvarů (přídavné + podstatné jméno).
-#     - Funkci generate_extra_prompts:
-#         * Úlohy na transformaci přídavných jmen mezi pády.
-#         * Úlohy na shodu přídavného jména s daným podstatným jménem.
-#         * Úlohy na stupňování vybraných přídavných jmen (2. a 3. stupeň).
-#         * Dodatečné otázky kombinující přídavné a podstatné jméno
-#           v konkrétním pádě a čísle.
-#     - Export všech úloh do JSON Lines formátu.
-#
-# Vstupy:
-#   - Slovník `adjectives` obsahující tvary přídavných jmen dle rodu,
-#     čísla a pádu.
-#   - Slovník `nouns` obsahující tvary podstatných jmen dle rodu,
-#     čísla a pádu.
-#   - Seznam `cases` s názvy pádů.
-#
-# Výstup:
-#   - Soubor "adjective_tasks.jsonl" obsahující generované prompty
-#     a odpovědi pro trénink modelu.
-#
-# Závislosti:
-#   - Python 3.8+
-#   - random (standardní knihovna)
-#   - json (standardní knihovna)
+# Formát výstupu:
+#   { "prompt": "...", "completion": "..." }
 #
 # Autor: [Tvůj Nick/Jméno]
 # ------------------------------------------------------------
 
+import random
+import json
+from collections import Counter
 
+# --- Databáze tvarů ---
 
 adjectives = {
     "velký": {
@@ -77,7 +55,6 @@ adjectives = {
             "pl": ["malé", "malých", "malým", "malé", "malé", "malých", "malými"]
         }
     },
-
     "nový": {
         "ž": {
             "sg": ["nová", "nové", "nové", "novou", "nová", "nové", "novou"],
@@ -96,7 +73,6 @@ adjectives = {
             "pl": ["nové", "nových", "novým", "nové", "nové", "nových", "novými"]
         }
     },
-
     "starý": {
         "ž": {
             "sg": ["stará", "staré", "staré", "starou", "stará", "staré", "starou"],
@@ -115,7 +91,6 @@ adjectives = {
             "pl": ["staré", "starých", "starým", "staré", "staré", "starých", "starými"]
         }
     },
-
     "český": {
         "ž": {
             "sg": ["česká", "české", "české", "českou", "česká", "české", "českou"],
@@ -152,7 +127,6 @@ adjectives = {
             "pl": ["dobré", "dobrých", "dobrým", "dobré", "dobré", "dobrých", "dobrými"]
         }
     },
-
     "špatný": {
         "ž": {
             "sg": ["špatná", "špatné", "špatné", "špatnou", "špatná", "špatné", "špatnou"],
@@ -171,7 +145,6 @@ adjectives = {
             "pl": ["špatné", "špatných", "špatným", "špatné", "špatné", "špatných", "špatnými"]
         }
     },
-
     "krásný": {
         "ž": {
             "sg": ["krásná", "krásné", "krásné", "krásnou", "krásná", "krásné", "krásnou"],
@@ -190,7 +163,6 @@ adjectives = {
             "pl": ["krásné", "krásných", "krásným", "krásné", "krásné", "krásných", "krásnými"]
         }
     },
-
     "rychlý": {
         "ž": {
             "sg": ["rychlá", "rychlé", "rychlé", "rychlou", "rychlá", "rychlé", "rychlou"],
@@ -206,10 +178,9 @@ adjectives = {
         },
         "m_nživ": {
             "sg": ["rychlý", "rychlého", "rychlému", "rychlý", "rychlý", "rychlém", "rychlým"],
-            "pl": ["rychlé", "rychlých", "rychlým", "rychlé", "rychlé", "rychlých", "rychlými"]
+            "pl": ["rychlé", "rychlých", "rychlým", "rychlé", "rychlé", "rychkých", "rychlými"]
         }
     },
-
     "těžký": {
         "ž": {
             "sg": ["těžká", "těžké", "těžké", "těžkou", "těžká", "těžké", "těžkou"],
@@ -227,7 +198,7 @@ adjectives = {
             "sg": ["těžký", "těžkého", "těžkému", "těžký", "těžký", "těžkém", "těžkým"],
             "pl": ["těžké", "těžkých", "těžkým", "těžké", "těžké", "těžkých", "těžkými"]
         }
-    }   
+    }
 }
 
 nouns = {
@@ -255,7 +226,8 @@ nouns = {
     },
     "s": {
         "auto": {
-            "sg": ["auto", "auta", "autu", "auto", "auto", "autu", "autem"],
+            # oprava lokálu sg: "autě" místo "autu"
+            "sg": ["auto", "auta", "autu", "auto", "auto", "autě", "autem"],
             "pl": ["auta", "aut", "autům", "auta", "auta", "autech", "auty"]
         },
         "město": {
@@ -320,82 +292,210 @@ nouns = {
         }
     }
 }
-import random
-import json
 
-# Pádové názvy
-cases = ["1. pád", "2. pád", "3. pád", "4. pád", "5. pád", "6. pád", "7. pád"]
+# --- Konfigurace a utilitky ---
 
-def generate_adjective_tasks(adjectives, nouns, cases, num_tasks=300):
+CASES = ["1. pád", "2. pád", "3. pád", "4. pád", "5. pád", "6. pád", "7. pád"]
+CASE_INDEXES = list(range(7))  # 0..6, ponecháváme i 5. pád (vokativ)
+
+PREP_BY_CASE = {
+    1: [],                 # N
+    2: ["bez", "do", "od"],# G
+    3: ["k", "proti"],     # D
+    4: ["pro", "na", "vidím"], # A; "vidím" použijeme jako slovesa v pseudo-větě
+    5: [],                 # Vokativ bez předložky; speciální šablona níže
+    6: ["o", "v", "na"],   # L
+    7: ["s", "před", "za"] # I
+}
+
+def set_seed(seed: int = 42):
+    random.seed(seed)
+
+def case_label(pad_idx: int) -> str:
+    return CASES[pad_idx]
+
+def normalize_completion(text: str) -> str:
+    # lowercase, jeden whitespace, bez tečky na konci
+    t = " ".join(text.strip().split())
+    if t.endswith("."):
+        t = t[:-1]
+    return t.lower()
+
+def unique_key(adj, rod, cislo, pad_idx, noun):
+    return (adj, rod, cislo, pad_idx, noun)
+    
+    
+    
+# --- generatory uloh  pro model ---    
+
+def generate_adjective_tasks_balanced(adjectives, nouns, num_per_combo: int = 1):
     tasks = []
+    seen = set()
+    stats = Counter()
+    for rod in nouns.keys():
+        for podst_jm in nouns[rod].keys():
+            for adj in adjectives.keys():
+                for cislo in ["sg", "pl"]:
+                    for pad_idx in CASE_INDEXES:
+                        for _ in range(num_per_combo):
+                            try:
+                                adj_form = adjectives[adj][rod][cislo][pad_idx]
+                                noun_form = nouns[rod][podst_jm][cislo][pad_idx]
+                            except KeyError:
+                                continue
+                            key = unique_key(adj, rod, cislo, pad_idx, podst_jm)
+                            if key in seen:
+                                continue
+                            seen.add(key)
 
-    for _ in range(num_tasks):
+                            prompt = (
+                                f"Napiš krátkou větu, ve které použiješ spojení '{adj_form} {noun_form}'. "
+                                f"Použij {pad_idx+1}. pád, {cislo} číslo, rod {rod}."
+                            )
+                            completion = f"Na stole leží {adj_form} {noun_form}."
+                            tasks.append({"prompt": prompt, "completion": normalize_completion(completion)})
+                            stats[("shoda", pad_idx)] += 1
+    return tasks, stats
+
+
+def generate_adjective_only_prompts(adjectives, nouns, num: int = 300):
+    prompts = []
+    stats = Counter()
+    for _ in range(num):
         rod = random.choice(list(nouns.keys()))
         podst_jm = random.choice(list(nouns[rod].keys()))
         adj = random.choice(list(adjectives.keys()))
         cislo = random.choice(["sg", "pl"])
-        pad_index = random.randint(0, 6)
-        pad_label = cases[pad_index]
-
+        pad_idx = random.choice(CASE_INDEXES)
         try:
-            adj_form = adjectives[adj][rod][cislo][pad_index]
-            noun_form = nouns[rod][podst_jm][cislo][pad_index]
+            adj_form = adjectives[adj][rod][cislo][pad_idx]
         except KeyError:
             continue
+        prompt = f"Použij přídavné jméno '{adj_form}' v krátké české větě."
+        completion = f"Byl to velmi {adj_form} den."
+        prompts.append({"prompt": prompt, "completion": normalize_completion(completion)})
+        stats[("adj_only", pad_idx)] += 1
+    return prompts, stats
 
-        prompt = f"Napiš přídavné jméno '{adj}' ve spojení se slovem '{podst_jm}'. Použij {pad_label}, {cislo}"
-        completion = f"{adj_form} {noun_form}"
 
-        tasks.append({
-            "prompt": prompt,
-            "completion": completion
-        })
-
-    return tasks
-
-def generate_extra_prompts(adjectives, nouns, cases, num_per_type=50):
+def generate_case_transform_prompts(adjectives, num: int = 300):
     prompts = []
-
-    # 2. Transformace mezi pády
-    for _ in range(num_per_type):
+    stats = Counter()
+    for _ in range(num):
         adj = random.choice(list(adjectives.keys()))
         rod = random.choice(list(adjectives[adj].keys()))
         cislo = random.choice(["sg", "pl"])
-        from_index = random.randint(0, 6)
-        to_index = random.randint(0, 6)
-        if from_index == to_index:
-            continue
-
+        src_idx, tgt_idx = random.sample(CASE_INDEXES, 2)
         try:
-            from_form = adjectives[adj][rod][cislo][from_index]
-            to_form = adjectives[adj][rod][cislo][to_index]
+            src_form = adjectives[adj][rod][cislo][src_idx]
+            tgt_form = adjectives[adj][rod][cislo][tgt_idx]
         except KeyError:
             continue
+        prompt = (
+            f"Změň tvar přídavného jména '{src_form}' z {src_idx+1}. pádu "
+            f"na {tgt_idx+1}. pád a použij ho ve větě."
+        )
+        completion = f"Obdivoval {tgt_form} hory."
+        prompts.append({"prompt": prompt, "completion": normalize_completion(completion)})
+        stats[("transform", tgt_idx)] += 1
+    return prompts, stats
 
-        prompts.append({
-            "prompt": f"Změň přídavné jméno '{adj}' z {cases[from_index]} do {cases[to_index]} ({cislo}, {rod} rod):",
-            "completion": to_form
-        })
 
-    # 3. Shoda s podstatným jménem
-    for _ in range(num_per_type):
+def generate_prep_sentence_prompts(adjectives, nouns, num: int = 400):
+    out = []
+    stats = Counter()
+    for _ in range(num):
         rod = random.choice(list(nouns.keys()))
         podst_jm = random.choice(list(nouns[rod].keys()))
         adj = random.choice(list(adjectives.keys()))
         cislo = random.choice(["sg", "pl"])
-        pad_index = random.randint(0, 6)
-
+        pad_idx = random.choice(CASE_INDEXES)
+        preps = PREP_BY_CASE.get(pad_idx + 1, [])
+        if pad_idx == 4:
+            continue
         try:
-            adj_form = adjectives[adj][rod][cislo][pad_index]
+            adj_form = adjectives[adj][rod][cislo][pad_idx]
+            noun_form = nouns[rod][podst_jm][cislo][pad_idx]
         except KeyError:
             continue
+        if preps:
+            prep = random.choice(preps)
+            prompt = (
+                f"Napiš větu, která začíná '{prep}' a pokračuje spojením '{adj_form} {noun_form}'."
+            )
+            completion = f"{prep} {adj_form} {noun_form} se skrýval poklad."
+            out.append({"prompt": prompt, "completion": normalize_completion(completion)})
+            stats[("prep_ctx", pad_idx)] += 1
+    return out, stats
 
-        prompts.append({
-            "prompt": f"Jaký tvar má přídavné jméno '{adj}' pro podstatné jméno '{podst_jm}' ({cases[pad_index]}, {cislo})?",
-            "completion": adj_form
-        })
 
-    # 4. Stupňování
+def generate_vocative_prompts(adjectives, nouns, num: int = 150):
+    out = []
+    stats = Counter()
+    pad_idx = 4  # 5. pád
+    for _ in range(num):
+        rod = random.choice(list(nouns.keys()))
+        podst_jm = random.choice(list(nouns[rod].keys()))
+        adj = random.choice(list(adjectives.keys()))
+        cislo = random.choice(["sg", "pl"])
+        try:
+            adj_form = adjectives[adj][rod][cislo][pad_idx]
+            noun_form = nouns[rod][podst_jm][cislo][pad_idx]
+        except KeyError:
+            continue
+        prompt = f"Vytvoř větu, kde někoho oslovuješ slovy '{adj_form} {noun_form}'."
+        completion = f"{adj_form} {noun_form}, pojď sem!"
+        out.append({"prompt": prompt, "completion": normalize_completion(completion)})
+        stats[("vocative", pad_idx)] += 1
+    return out, stats
+
+
+def generate_ab_choice_prompts(adjectives, nouns, num: int = 200):
+    out = []
+    stats = Counter()
+    for _ in range(num):
+        rod = random.choice(list(nouns.keys()))
+        podst_jm = random.choice(list(nouns[rod].keys()))
+        adj = random.choice(list(adjectives.keys()))
+        cislo = random.choice(["sg", "pl"])
+        pad_idx = random.choice(CASE_INDEXES)
+        try:
+            correct_adj = adjectives[adj][rod][cislo][pad_idx]
+            correct_noun = nouns[rod][podst_jm][cislo][pad_idx]
+        except KeyError:
+            continue
+        wrong_pad = (pad_idx + random.choice([1, 2, 3])) % 7
+        wrong_cislo = "pl" if cislo == "sg" else "sg"
+        try:
+            wrong_adj_1 = adjectives[adj][rod][cislo][wrong_pad]
+            wrong_noun_1 = nouns[rod][podst_jm][cislo][wrong_pad]
+            var_a = f"{correct_adj} {correct_noun}"
+            var_b = f"{wrong_adj_1} {wrong_noun_1}"
+        except KeyError:
+            try:
+                wrong_adj_2 = adjectives[adj][rod][wrong_cislo][pad_idx]
+                wrong_noun_2 = nouns[rod][podst_jm][wrong_cislo][pad_idx]
+                var_a = f"{correct_adj} {correct_noun}"
+                var_b = f"{wrong_adj_2} {wrong_noun_2}"
+            except KeyError:
+                continue
+        options = [normalize_completion(var_a), normalize_completion(var_b)]
+        correct_is = random.choice([0, 1])
+        if correct_is == 1:
+            options.reverse()
+        correct_letter = "A" if correct_is == 0 else "B"
+        prompt = (
+            f"Vyber správnou shodu přídavného a podstatného jména pro {pad_idx+1}. pád, {cislo} číslo, rod {rod}. "
+            f"A: '{options[0]}', B: '{options[1]}'"
+        )
+        out.append({"prompt": prompt, "completion": correct_letter})
+        stats[("choice", pad_idx)] += 1
+    return out, stats
+
+
+def generate_gradation_prompts():
+    prompts = []
+    stats = Counter()
     gradation_map = {
         "malý": ["menší", "nejmenší"],
         "dobrý": ["lepší", "nejlepší"],
@@ -403,46 +503,90 @@ def generate_extra_prompts(adjectives, nouns, cases, num_per_type=50):
         "vysoký": ["vyšší", "nejvyšší"],
         "rychlý": ["rychlejší", "nejrychlejší"]
     }
-    for adj, forms in gradation_map.items():
+    for adj, (comp, superl) in gradation_map.items():
+        # Druhý stupeň
         prompts.append({
-            "prompt": f"Jaký je 2. stupeň přídavného jména '{adj}'?",
-            "completion": forms[0]
+            "prompt": f"Použij druhý stupeň přídavného jména '{adj}' v krátké české větě.",
+            "completion": normalize_completion(f"Tento úkol je {comp} než předchozí.")
         })
+        stats[("gradation", 2)] += 1
+
+        # Třetí stupeň
         prompts.append({
-            "prompt": f"Jaký je 3. stupeň přídavného jména '{adj}'?",
-            "completion": forms[1]
+            "prompt": f"Použij třetí stupeň přídavného jména '{adj}' v krátké české větě.",
+            "completion": normalize_completion(f"To je {superl} vrchol v celém pohoří.")
         })
+        stats[("gradation", 3)] += 1
 
-    # 7. Otázky
-    for _ in range(num_per_type):
-        rod = random.choice(list(nouns.keys()))
-        podst_jm = random.choice(list(nouns[rod].keys()))
-        adj = random.choice(list(adjectives.keys()))
-        cislo = random.choice(["sg", "pl"])
-        pad_index = random.randint(0, 6)
+    return prompts, stats
 
-        try:
-            adj_form = adjectives[adj][rod][cislo][pad_index]
-            noun_form = nouns[rod][podst_jm][cislo][pad_index]
-        except KeyError:
-            continue
 
-        prompts.append({
-            "prompt": f"Jaký tvar má přídavné jméno '{adj}' pro slovo '{podst_jm}' v {cases[pad_index]} ({cislo})?",
-            "completion": f"{adj_form} {noun_form}"
-        })
 
-    return prompts
 
-# Použití + export
+# --- Export a reporting ---
+
+def write_jsonl(filename: str, tasks):
+    with open(filename, "w", encoding="utf-8") as f:
+        for t in tasks:
+            f.write(json.dumps(t, ensure_ascii=False) + "\n")
+
+def print_report(stats: Counter):
+    total = sum(stats.values())
+    print(f"✅ Celkem vygenerováno {total} úloh.")
+    by_type = Counter()
+    by_case = Counter()
+    for (t, p), n in stats.items():
+        by_type[t] += n
+        if p >= 0:
+            by_case[p] += n
+    print("— Podle typu:")
+    for t, n in by_type.most_common():
+        print(f"   {t:>10}: {n}")
+    print("— Podle pádu (index 0..6):")
+    for p in range(7):
+        print(f"   {case_label(p):>7} -> {by_case.get(p, 0)}")
+
 if __name__ == "__main__":
-    # Předpokládáme, že máš definované `adjectives` a `nouns`
-    tasks = generate_adjective_tasks(adjectives, nouns, cases, num_tasks=300)
-    extra_tasks = extra_tasks = generate_extra_prompts(adjectives, nouns, cases)
-    all_tasks = tasks + extra_tasks
+    set_seed(42)
 
-    with open("adjective_tasks.jsonl", "w", encoding="utf-8") as f:
-        for task in all_tasks:
-            f.write(json.dumps(task, ensure_ascii=False) + "\n")
+    all_tasks = []
+    all_stats = Counter()
 
-    print(f"✅ Vygenerováno {len(all_tasks)} úloh (včetně smysluplných) a uloženo do 'adjective_tasks.jsonl'")
+    # Shoda adj+subst (vyvážené pokrytí všech kombinací) – pozor, může být velké
+    tasks1, stats1 = generate_adjective_tasks_balanced(adjectives, nouns, num_per_combo=1)
+    all_tasks += tasks1
+    all_stats += stats1
+
+    # Jen adj tvar (kratší odpověď)
+    tasks2, stats2 = generate_adjective_only_prompts(adjectives, nouns, num=400)
+    all_tasks += tasks2
+    all_stats += stats2
+
+    # Transformace mezi pády
+    tasks3, stats3 = generate_case_transform_prompts(adjectives, num=400)
+    all_tasks += tasks3
+    all_stats += stats3
+
+    # Kontext s předložkami (bez vokativu)
+    tasks4, stats4 = generate_prep_sentence_prompts(adjectives, nouns, num=600)
+    all_tasks += tasks4
+    all_stats += stats4
+
+    # Vokativ – explicitní šablona
+    tasks5, stats5 = generate_vocative_prompts(adjectives, nouns, num=200)
+    all_tasks += tasks5
+    all_stats += stats5
+
+    # Výběrové úlohy A/B
+    tasks6, stats6 = generate_ab_choice_prompts(adjectives, nouns, num=300)
+    all_tasks += tasks6
+    all_stats += stats6
+
+    # Stupňování
+    tasks7, stats7 = generate_gradation_prompts()
+    all_tasks += tasks7
+    all_stats += stats7
+
+    # Export
+    write_jsonl("Pridavna_jmena.jsonl", all_tasks)
+    print_report(all_stats)
