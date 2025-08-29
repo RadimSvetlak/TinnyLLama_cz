@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import json
 import random
-from tab_zajmena import pronoun_declensions  # import tabulky se zájmeny
+from tab_zajmena import pronoun_declensions  # Import tables with pronoun declensions
 
 # Pády a otázky
 cases = [
@@ -14,24 +14,24 @@ padove_otazky = [
     "Kdo?", "Koho?", "Komu?", "Koho?", "Oslovení", "O kom?", "S kým?"
 ]
 
-# Začátky vět pro doplňovačky
+# Lexical variety and idiomatic/pragmatic sentence starters
 sentence_starters_singular = {
-    "1. pád": ["Toto je", "Zde stojí", "Tohle je", "Tam sedí", "To je"],
-    "2. pád": ["Bez", "Kvůli", "Vedle", "Uprostřed", "Místo"],
-    "3. pád": ["K", "Díky", "Proti", "Kvůli", "Napříč"],
-    "4. pád": ["Vidím", "Potřebuji", "Hledám", "Mám rád", "Čekám na"],
-    "5. pád": ["Hej,", "Vážení,", "Přátelé,", "Ty,", "Pane,"],
-    "6. pád": ["O", "Na", "V", "Při", "Po"],
-    "7. pád": ["S", "Spolu s", "Před", "Za", "Mezi"]
+    "1. pád": ["Toto je", "Zde stojí", "Tohle je", "Tam sedí", "To je", "Tady leží"],
+    "2. pád": ["Bez", "Kvůli", "Vedle", "Uprostřed", "Místo", "Blízko"],
+    "3. pád": ["K", "Díky", "Proti", "Kvůli", "Napříč", "O směrem k"],
+    "4. pád": ["Vidím", "Potřebuji", "Hledám", "Mám rád", "Čekám na", "Ztratil jsem"],
+    "5. pád": ["Hej,", "Vážení,", "Přátelé,", "Ty,", "Pane,", "Slečno,"],
+    "6. pád": ["O", "Na", "V", "Při", "Po", "Během"],
+    "7. pád": ["S", "Spolu s", "Před", "Za", "Mezi", "Nad"]
 }
 sentence_starters_plural = {
-    "1. pád": ["Toto jsou", "Zde stojí", "Tohle jsou", "Tam sedí", "To jsou"],
-    "2. pád": ["Bez", "Kvůli", "Vedle", "Uprostřed", "Místo"],
-    "3. pád": ["K", "Díky", "Proti", "Kvůli", "Napříč"],
-    "4. pád": ["Vidím", "Potřebuji", "Hledám", "Mám rád", "Čekám na"],
-    "5. pád": ["Hej,", "Vážení,", "Přátelé,", "Vy,", "Drazí,"],
-    "6. pád": ["O", "Na", "V", "Při", "Po"],
-    "7. pád": ["S", "Spolu s", "Před", "Za", "Mezi"]
+    "1. pád": ["Toto jsou", "Zde stojí", "Tohle jsou", "Tam sedí", "To jsou", "Ti tam jsou"],
+    "2. pád": ["Bez", "Kvůli", "Vedle", "Uprostřed", "Místo", "Blízko"],
+    "3. pád": ["K", "Díky", "Proti", "Kvůli", "Napříč", "O směrem k"],
+    "4. pád": ["Vidím", "Potřebuji", "Hledám", "Mám rád", "Čekám na", "Ztratil jsem"],
+    "5. pád": ["Hej,", "Vážení,", "Přátelé,", "Vy,", "Drazí,", "Vážené dámy,"],
+    "6. pád": ["O", "Na", "V", "Při", "Po", "Během"],
+    "7. pád": ["S", "Spolu s", "Před", "Za", "Mezi", "Nad"]
 }
 
 def build_distractor_pool():
@@ -52,7 +52,7 @@ def build_distractor_pool():
     return [p for p in pool if p and p != "-"]
 
 def labeled_mc_row(lemma, case_label, extra_desc, correct, distractor_pool):
-    """Vytvoří multiple-choice s A/B/C a kontextem."""
+    """Create multiple-choice question with A/B/C options and context."""
     candidates = [x for x in distractor_pool if x != correct]
     if len(candidates) < 2:
         return None
@@ -67,6 +67,20 @@ def labeled_mc_row(lemma, case_label, extra_desc, correct, distractor_pool):
     prompt = f"Vyber zájmeno '{lemma}'{desc}: " + " ".join(labeled_opts)
     return {"prompt": prompt, "completion": correct}
 
+def task_negation(pronoun, form, case_label):
+    """Add tasks involving negation."""
+    return {
+        "prompt": f"Neguj větu: Ne {form} (zájmeno '{pronoun}', {case_label})",
+        "completion": f"Ne {form}"
+    }
+
+def task_questions(pronoun, form, question):
+    """Add tasks involving questions."""
+    return {
+        "prompt": f"Zodpovězte otázku '{question}' s použitím zájmena '{pronoun}': Jaký tvar?",
+        "completion": form
+    }
+
 def generate_extended_prompts():
     output_file = "train_zajmena.jsonl"
     rows = []
@@ -77,11 +91,11 @@ def generate_extended_prompts():
         plural = data["plural"]
         plural_base = data["plural_base"]
 
-        # převod mezi čísly
+        # Pluralization prompts
         rows.append({"prompt": f"Množné číslo od zájmena „{pronoun}“:", "completion": plural_base})
         rows.append({"prompt": f"Jaký je tvar zájmena „{pronoun}“ v množném čísle?", "completion": plural_base})
 
-        # přivlastňovací mapování
+        # Possessive pronoun mapping
         if "possessive" in data:
             poss_sg = data["possessive"]["singular"]
             poss_pl = data["possessive"]["plural"]
@@ -94,28 +108,31 @@ def generate_extended_prompts():
             case_name = case_names[i]
             question = padove_otazky[i]
 
-            # jednotné číslo
+            # Singular
             if singular[i] != "-":
-                rows.append({"prompt": f"Jaký je {case_label} ({case_name}) jednotného čísla zájmena „{pronoun}“?", "completion": singular[i]})
-                rows.append({"prompt": f"Na otázku „{question}“ odpovídá u zájmena „{pronoun}“ tvar:", "completion": singular[i]})
-                starter = random.choice(sentence_starters_singular[case_label])
-                rows.append({"prompt": f"Doplň správný tvar: {starter} ___ (zájmeno „{pronoun}“, {case_label})", "completion": singular[i]})
-                
-                
-                # převod mezi pády – jednotné
+                rows.extend([
+                    {"prompt": f"Jaký je {case_label} ({case_name}) jednotného čísla zájmena „{pronoun}“?", "completion": singular[i]},
+                    {"prompt": f"Na otázku „{question}“ odpovídá u zájmena „{pronoun}“ tvar:", "completion": singular[i]},
+                    {"prompt": f"Doplň správný tvar: {random.choice(sentence_starters_singular[case_label])} ___ (zájmeno „{pronoun}“, {case_label})", "completion": singular[i]},
+                    task_negation(pronoun, singular[i], case_label),
+                    task_questions(pronoun, singular[i], question)
+                ])
+
+                # Case conversion – singular
                 for j in range(7):
                     if i != j and singular[j] != "-":
                         rows.append({
                             "prompt": f"Převeď zájmeno „{singular[i]}“ z {cases[i]}u do {cases[j]}u:",
                             "completion": singular[j]
                         })
-   
+
                 other_opts = [form for form in singular if form != "-" and form != singular[i]]
                 if len(other_opts) >= 2:
                     opts = random.sample(other_opts, 2) + [singular[i]]
                     random.shuffle(opts)
                     rows.append({"prompt": f"Vyber správný tvar zájmena „{pronoun}“ ve {case_label}: {opts}", "completion": singular[i]})
-                # MC s popisky A/B/C a kontextem
+
+                # MC with labeled A/B/C and context
                 extra_desc = ""
                 if pronoun in ["můj", "tvůj", "náš", "váš", "svůj"]:
                     extra_desc = "přivlastňovací tvar"
@@ -123,12 +140,17 @@ def generate_extended_prompts():
                 if mc:
                     rows.append(mc)
 
-            # množné číslo
+            # Plural
             if plural[i] != "-":
-                rows.append({"prompt": f"Jaký je {case_label} ({case_name}) množného čísla zájmena „{pronoun}“?", "completion": plural[i]})
-                rows.append({"prompt": f"Na otázku „{question}“ odpovídá u zájmena „{plural_base}“ tvar:", "completion": plural[i]})
-                starter = random.choice(sentence_starters_plural[case_label])
-                rows.append({"prompt": f"Doplň správný tvar: {starter} ___ (zájmeno „{plural_base}“, {case_label})", "completion": plural[i]})
+                rows.extend([
+                    {"prompt": f"Jaký je {case_label} ({case_name}) množného čísla zájmena „{pronoun}“?", "completion": plural[i]},
+                    {"prompt": f"Na otázku „{question}“ odpovídá u zájmena „{plural_base}“ tvar:", "completion": plural[i]},
+                    {"prompt": f"Doplň správný tvar: {random.choice(sentence_starters_plural[case_label])} ___ (zájmeno „{plural_base}“, {case_label})", "completion": plural[i]},
+                    task_negation(plural_base, plural[i], case_label),
+                    task_questions(plural_base, plural[i], question)
+                ])
+
+                # MC with labeled A/B/C and context
                 extra_desc = ""
                 if pronoun in ["můj", "tvůj", "náš", "váš", "svůj"]:
                     extra_desc = "přivlastňovací tvar"
@@ -136,13 +158,13 @@ def generate_extended_prompts():
                 if mc_pl:
                     rows.append(mc_pl)
 
-    # zápis do souboru
+    # Write to file
     with open(output_file, "w", encoding="utf-8") as f:
         for row in rows:
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
 
     print(f"✅ Hotovo: {len(rows)} řádků uloženo do {output_file}")
 
-# spuštění
+# Run
 if __name__ == "__main__":
     generate_extended_prompts()
